@@ -9,6 +9,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.logging.Logger;
 
 import java.util.List;
@@ -116,14 +117,30 @@ public class MyRestService {
         logger.info("Fetching library for userId: " + userId);
         Query query = new Query(Criteria.where("userId").is(userId));
         Library library = mongoTemplate.findOne(query, Library.class, "libraries");
-        // Pobieranie usera na podstawie userId
-        if (library.getUserId() != null) {
+
+        if (library != null && library.getUserId() != null) {
             User user = mongoTemplate.findById(library.getUserId(), User.class, "users");
             library.setUser(user);
+
+            if (library.getSongIds() != null && !library.getSongIds().isEmpty()) {
+                List<Song> songs = mongoTemplate.find(Query.query(Criteria.where("id").in(library.getSongIds())), Song.class, "songs");
+
+                // Fetch artist data for each song
+                for (Song song : songs) {
+                    if (song.getArtistId() != null) {
+                        Artist artist = mongoTemplate.findById(song.getArtistId(), Artist.class, "artists");
+                        song.setArtist(artist);
+                    }
+                }
+
+                library.setSonglists(songs);
+            }
         }
-        //TODO dodać pobieranie szczegółowych danych o playlistach na podstawie playlistIds
+
         return library;
     }
+
+
 
     public List<Artist> searchArtists(String name, String country, List<String> genre) {
         logger.info("Searching artists with name: " + name + ", country: " + country + ", genres: " + genre);
@@ -209,8 +226,16 @@ public class MyRestService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User with this email already exists.");
         }
 
-        // If no existing user, save the new user
-        return mongoTemplate.save(user, "users");
+        // Save the new user
+        User newUser = mongoTemplate.save(user, "users");
+
+        // Create a library for the new user containing an empty list of songs
+        Library library = new Library();
+        library.setUserId(newUser.getId());
+        library.setSongIds(new ArrayList<>()); // Empty list of songs
+        mongoTemplate.save(library, "libraries");
+
+        return newUser;
     }
 
 
@@ -350,6 +375,152 @@ public class MyRestService {
 
         // If email and password are correct, return the user's ID
         return user.getId();
+    }
+
+    public Library modifyLibrary(String userId, String songId, boolean addSong) {
+        logger.info("Modifying library for userId: " + userId + ", songId: " + songId + ", addSong: " + addSong);
+        Query query = new Query(Criteria.where("userId").is(userId));
+        Library library = mongoTemplate.findOne(query, Library.class, "libraries");
+
+        if (library != null) {
+            List<String> songIds = library.getSongIds();
+
+            if (addSong) {
+                if (!songIds.contains(songId)) {
+                    songIds.add(songId);
+                }
+            } else {
+                songIds.remove(songId);
+            }
+
+            library.setSongIds(songIds);
+            mongoTemplate.save(library, "libraries");
+
+            // Fetch user details
+            User user = mongoTemplate.findById(library.getUserId(), User.class, "users");
+            library.setUser(user);
+
+            // Fetch song details including artist data
+            if (library.getSongIds() != null && !library.getSongIds().isEmpty()) {
+                List<Song> songs = mongoTemplate.find(Query.query(Criteria.where("id").in(library.getSongIds())), Song.class, "songs");
+
+                for (Song song : songs) {
+                    if (song.getArtistId() != null) {
+                        Artist artist = mongoTemplate.findById(song.getArtistId(), Artist.class, "artists");
+                        song.setArtist(artist);
+                    }
+                }
+
+                library.setSonglists(songs);
+            }
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Library not found for userId: " + userId);
+        }
+
+        return library;
+    }
+
+    public String getSongLink(String songId) {
+        logger.info("Fetching link to file for songId: " + songId);
+        Song song = mongoTemplate.findById(songId, Song.class, "songs");
+
+        if (song != null) {
+            return song.getLinkToFile();
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Song not found for songId: " + songId);
+        }
+    }
+
+
+    public String getAlbumLink(String albumId) {
+        logger.info("Fetching link to file for albumId: " + albumId);
+        Album album = mongoTemplate.findById(albumId, Album.class, "albums");
+
+        if (album != null) {
+            String linkToFile = album.getLinkToFile();
+
+            if (linkToFile == null || linkToFile.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Album found but link to file is empty or not set");
+            }
+
+            return linkToFile;
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found for albumId: " + albumId);
+        }
+    }
+
+    public Album getAlbumBySongId(String songId) {
+        logger.info("Fetching album for songId in rest service: " + songId);
+
+        try {
+            // Znajdź album zawierający piosenkę o podanym songId
+            Query query = Query.query(Criteria.where("songIds").in(songId));
+            Album album = mongoTemplate.findOne(query, Album.class, "albums");
+
+            if (album == null) {
+                // Rzuć wyjątek 404, jeśli album nie istnieje
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found for songId: " + songId);
+            }
+
+            return album;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error occurred");
+        }
+    }
+
+    public Playlist createPlaylistForUser(Playlist playlist) {
+        // Fetch the User object by userId
+        User user = mongoTemplate.findById(playlist.getUserId(), User.class);
+        if (user == null) {
+            return null; // Return null if the user is not found
+        }
+
+        // If there are song IDs, fetch the Song objects; otherwise, initialize an empty list
+        List<Song> songs = new ArrayList<>();
+        if (playlist.getSongIds() != null && !playlist.getSongIds().isEmpty()) {
+            songs = getSongsByIds(playlist.getSongIds());
+        }
+
+        // Set the User object and Songs into the Playlist
+        playlist.setUser(user);
+        playlist.setSongs(songs);
+
+        // Save the Playlist into MongoDB
+        return savePlaylist(playlist);
+    }
+
+    // Helper method to fetch songs by their IDs
+    public List<Song> getSongsByIds(List<String> songIds) {
+        Query query = new Query(Criteria.where("id").in(songIds));
+        return mongoTemplate.find(query, Song.class);
+    }
+
+    // Method to save the Playlist into MongoDB
+    public Playlist savePlaylist(Playlist playlist) {
+        try {
+            mongoTemplate.save(playlist, "playlists");
+            return playlist; // Return the created playlist
+        } catch (Exception e) {
+            // Log the error and return null if saving fails
+            return null;
+        }
+    }
+
+    public boolean deletePlaylistById(String playlistId) {
+        // Sprawdzamy, czy istnieje playlista o podanym ID
+        Playlist playlist = mongoTemplate.findById(playlistId, Playlist.class, "playlists");
+        if (playlist == null) {
+            throw new IllegalArgumentException("User with ID " + playlistId + " does not exist.");
+        }
+
+        try {
+            mongoTemplate.remove(playlist, "playlists"); // Usuwamy playlistę
+            return true; // Udane usunięcie
+        } catch (Exception e) {
+            // Logujemy błąd w przypadku niepowodzenia
+            logger.info("Error while deleting playlist with id: " + playlistId);
+            return false;
+        }
     }
 
 

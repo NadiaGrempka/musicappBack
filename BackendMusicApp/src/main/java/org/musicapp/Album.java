@@ -12,6 +12,7 @@ public class Album {
     private Artist artist; // Obiekt artysty
     private List<String> songIds; // Lista identyfikatorów piosenek
     private List<Song> songs;     // Lista obiektów Song
+    private String linkToFile;
 
     // Getters i Setters
     public String getId() {
@@ -68,5 +69,13 @@ public class Album {
 
     public void setSongs(List<Song> songs) {
         this.songs = songs;
+    }
+
+    public String getLinkToFile() {
+        return linkToFile;
+    }
+
+    public void setLinkToFile(String linkToFile) {
+        this.linkToFile = linkToFile;
     }
 }

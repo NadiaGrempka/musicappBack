@@ -11,10 +11,9 @@ public class Library {
 
     @Id
     private String id;
-    // Getters and Setters
     private String userId;
     private User user;
-    private List<String> playlistIds;
-    private List<Playlist> playlists;
+    private List<String> songIds;
+    private List<Song> songlists;
 
 }

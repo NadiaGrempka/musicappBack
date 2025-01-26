@@ -1,6 +1,7 @@
 package org.musicapp;
 
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -78,6 +81,14 @@ public class MyRestController {
         return restService.getLibraryByUserId(userId);
     }
 
+    //todo endpoint library
+    @PutMapping("/library")
+    public ResponseEntity<Library> modifyLibrary(@RequestParam String userId, @RequestParam String songId, @RequestParam boolean addSong) {
+        logger.info("Received request to modify library for userId: " + userId + ", songId: " + songId + ", addSong: " + addSong);
+        Library updatedLibrary = restService.modifyLibrary(userId, songId, addSong);
+        return ResponseEntity.ok(updatedLibrary);
+    }
+
     @GetMapping("/search/artists")
     public List<Artist> searchArtists(
             @RequestParam(required = false) String name,
@@ -104,7 +115,6 @@ public class MyRestController {
         return restService.searchAlbums(title);
     }
 
-    //TODO @GetMapping("/search/playlists") dopisać
     @GetMapping("/search/playlists")
     public List<Playlist> searchPlaylists(@RequestParam(required = false) String title) {
         logger.info("Searching playlists");
@@ -187,6 +197,76 @@ public class MyRestController {
         }
     }
 
+    @GetMapping("/songs/{id}/link")
+    public ResponseEntity<String> getSongLink(@PathVariable String id, HttpServletRequest request) {
+        logger.info("Fetching link to file for songId: " + id);
+        String filePath = restService.getSongLink(id);
 
+        // Wyciągnij nazwę pliku z pełnej ścieżki
+        String fileName = Paths.get(filePath).getFileName().toString();
+
+        // Generuj URL dostępny dla frontendu
+        String fileUrl = request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort() + "/" + fileName;
+
+        logger.info("Generated file URL: " + fileUrl);
+        return ResponseEntity.ok(fileUrl);
+    }
+
+    @GetMapping("/albums/{id}/link")
+    public ResponseEntity<String> getAlbumLink(@PathVariable String id, HttpServletRequest request) {
+        logger.info("Fetching link to file for songId: " + id);
+        String filePath = restService.getAlbumLink(id);
+
+        // Wyciągnij nazwę pliku z pełnej ścieżki
+        String fileName = Paths.get(filePath).getFileName().toString();
+
+        // Generuj URL dostępny dla frontendu
+        String fileUrl = request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort() + "/" + fileName;
+
+        logger.info("Generated file URL: " + fileUrl);
+        return ResponseEntity.ok(fileUrl);
+    }
+
+    @GetMapping("/albums/info")
+    public ResponseEntity<Album> getAlbumBySongId(@RequestParam String songId) {
+        logger.info("Fetching album for songId: " + songId);
+
+        // Delegacja całości logiki (wraz z obsługą błędów) do RestService
+        Album album = restService.getAlbumBySongId(songId);
+
+        return ResponseEntity.ok(album);
+    }
+
+    @PostMapping("/playlists")
+    public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist) {
+        logger.info("Creating new playlist for userId: " + playlist.getUserId());
+
+        if (playlist.getSongIds() == null) {
+            playlist.setSongIds(new ArrayList<>()); // Ensure songIds is not null, but can be empty
+        }
+
+        Playlist newPlaylist = restService.createPlaylistForUser(playlist);
+
+        if (newPlaylist != null) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(newPlaylist); // Return the created playlist
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(null); // Return 400 if something went wrong
+        }
+    }
+
+    @DeleteMapping("/playlists/{id}")
+    public ResponseEntity<String> deletePlaylist(@PathVariable String id) {
+        logger.info("Deleting playlist with id: " + id);
+
+        boolean deleted = restService.deletePlaylistById(id);
+
+        if (deleted) {
+            return ResponseEntity.ok("Playlist with ID " + id + " has been deleted.");
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Playlist with ID " + id + " not found.");
+        }
+    }
 
 }

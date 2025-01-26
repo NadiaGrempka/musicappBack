@@ -10,6 +10,7 @@ public class Song {
     private Artist artist;   // Obiekt artysty
     private int year;
     private String time;
+    private String linkToFile;
 
     // Getters i Setters
     public String getId() {
@@ -58,5 +59,13 @@ public class Song {
 
     public void setTime(String time) {
         this.time = time;
+    }
+
+    public String getLinkToFile() {
+        return linkToFile;
+    }
+
+    public void setLinkToFile(String linkToFile) {
+        this.linkToFile = linkToFile;
     }
 }
