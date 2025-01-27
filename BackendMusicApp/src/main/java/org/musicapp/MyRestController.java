@@ -116,10 +116,14 @@ public class MyRestController {
     }
 
     @GetMapping("/search/playlists")
-    public List<Playlist> searchPlaylists(@RequestParam(required = false) String title) {
-        logger.info("Searching playlists");
-        return restService.searchPlaylists(title);
+    public List<Playlist> searchPlaylists(
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String playlistId) {
+        logger.info("Searching playlists with title: " + title + " and userId: " + userId);
+        return restService.searchPlaylists(title, userId, playlistId);
     }
+
 
 
     @PostMapping("/artists")
@@ -217,10 +221,7 @@ public class MyRestController {
         logger.info("Fetching link to file for songId: " + id);
         String filePath = restService.getAlbumLink(id);
 
-        // Wyciągnij nazwę pliku z pełnej ścieżki
         String fileName = Paths.get(filePath).getFileName().toString();
-
-        // Generuj URL dostępny dla frontendu
         String fileUrl = request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort() + "/" + fileName;
 
         logger.info("Generated file URL: " + fileUrl);
@@ -266,6 +267,16 @@ public class MyRestController {
         } else {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body("Playlist with ID " + id + " not found.");
+        }
+    }
+
+    @PutMapping("/playlists/addsong")
+    public ResponseEntity<?> addSongToPlaylist(@RequestParam String playlistId, @RequestParam String songId) {
+        try {
+            Playlist updatedPlaylist = restService.addSongToPlaylist(playlistId, songId);
+            return ResponseEntity.ok(updatedPlaylist);
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
         }
     }
 

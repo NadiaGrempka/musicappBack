@@ -3,6 +3,7 @@ package org.musicapp;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -10,6 +11,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 import java.util.List;
@@ -340,12 +342,18 @@ public class MyRestService {
         return artist;
     }
 
-    public List<Playlist> searchPlaylists(String title) {
+    public List<Playlist> searchPlaylists(String title, String userId, String playlistId) {
         // Pobierz wszystkie playlisty
         List<Playlist> allPlaylists = getAllPlaylists();
-        // Filtruj playlisty na podstawie tytułu
-        return allPlaylists.stream() .filter(playlist -> title == null || playlist.getTitle().toLowerCase().contains(title.toLowerCase())) .collect(Collectors.toList());
+
+        // Filtruj playlisty na podstawie tytułu i userId
+        return allPlaylists.stream()
+                .filter(playlist -> (title == null || playlist.getTitle().toLowerCase().contains(title.toLowerCase())) &&
+                        (userId == null || userId.equals(playlist.getUserId())) &&
+                        (playlistId == null || playlistId.equals(playlist.getId())))
+                .collect(Collectors.toList());
     }
+
 
     public User getUserById(String userId) {
         logger.info("Fetching user with ID: " + userId);
@@ -521,6 +529,40 @@ public class MyRestService {
             logger.info("Error while deleting playlist with id: " + playlistId);
             return false;
         }
+    }
+
+    public Playlist addSongToPlaylist(String playlistId, String songId) throws Exception {
+        // Find the playlist by ID
+        Query playlistQuery = new Query(Criteria.where("_id").is(playlistId));
+        Playlist playlist = mongoTemplate.findOne(playlistQuery, Playlist.class, "playlists");
+
+        if (playlist == null) {
+            throw new Exception("Playlist not found");
+        }
+
+        // Check if the song already exists in the playlist
+        if (playlist.getSongIds() != null && playlist.getSongIds().contains(songId)) {
+            throw new Exception("Song already exists in the playlist");
+        }
+
+        // Find the song by ID
+        Query songQuery = new Query(Criteria.where("_id").is(songId));
+        Song song = mongoTemplate.findOne(songQuery, Song.class, "songs");
+
+        if (song == null) {
+            throw new Exception("Song not found");
+        }
+
+        // Add the song ID and the song object to the playlist
+        Update update = new Update()
+                .addToSet("songIds", songId)
+                .addToSet("songs", song);
+
+        mongoTemplate.updateFirst(playlistQuery, update, Playlist.class, "playlists");
+
+        // Fetch the updated playlist
+        Playlist updatedPlaylist = mongoTemplate.findOne(playlistQuery, Playlist.class, "playlists");
+        return updatedPlaylist;
     }
 
 
